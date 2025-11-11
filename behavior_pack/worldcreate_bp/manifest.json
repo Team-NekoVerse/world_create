@@ -1,1 +1,24 @@
-
+{
+  "format_version": 2,
+  "header": {
+    "name": "WorldCreate BP",
+    "description": "Simple WorldEdit-like addon made for easy building.",
+    "uuid": "1a9a1bbd-5d6b-4d2c-83f2-8f6d9b92a000",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 21, 0]
+  },
+  "modules": [
+    {
+      "description": "Behavior script for WorldCreate",
+      "type": "script",
+      "uuid": "2b6c3fc4-53bb-4413-8828-8ef531da0001",
+      "version": [1, 0, 0]
+    }
+  ],
+  "dependencies": [
+    {
+      "module_name": "@minecraft/server",
+      "version": "1.10.0"
+    }
+  ]
+}
