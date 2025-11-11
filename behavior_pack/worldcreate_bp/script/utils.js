@@ -22,3 +22,9 @@ export function getArea(pos1, pos2) {
   const maxZ = Math.max(pos1.z, pos2.z);
   return { minX, minY, minZ, maxX, maxY, maxZ };
 }
+
+export function clearPosTags(player) {
+  for (const tag of player.getTags()) {
+    if (tag.startsWith("pos1:") || tag.startsWith("pos2:")) player.removeTag(tag);
+  }
+}
