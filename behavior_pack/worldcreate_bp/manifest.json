@@ -1,24 +1,26 @@
 {
   "format_version": 2,
   "header": {
-    "name": "WorldCreate BP",
-    "description": "Simple WorldEdit-like addon made for easy building.",
+    "name": "§l WorldCreate - 誰でも簡単建築！",
+    "description": "Simplified WorldEdit-style addon for Bedrock Edition. Select areas, fill, replace, copy & paste with ease!",
     "uuid": "1a9a1bbd-5d6b-4d2c-83f2-8f6d9b92a000",
-    "version": [1, 0, 0],
+    "version": [2, 0, 0],
     "min_engine_version": [1, 21, 0]
   },
   "modules": [
     {
-      "description": "Behavior script for WorldCreate",
+      "description": "この建築支援アドオンでは大掛かりな建築作業などを簡単に行うことができます。",
       "type": "script",
       "uuid": "2b6c3fc4-53bb-4413-8828-8ef531da0001",
-      "version": [1, 0, 0]
+      "version": [2, 0, 0]
     }
   ],
   "dependencies": [
-    {
-      "module_name": "@minecraft/server",
-      "version": "1.10.0"
-    }
-  ]
+    { "module_name": "@minecraft/server", "version": "1.10.0" }
+  ],
+  "metadata": {
+    "authors": ["Team NekoVerse"],
+    "license": "MIT",
+    "url": "https://github.com/yourname/WorldCreate"
+  }
 }
