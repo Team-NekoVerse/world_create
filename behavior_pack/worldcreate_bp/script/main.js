@@ -1,5 +1,7 @@
-import { world, system } from "@minecraft/server";
-import { getPositionsFromTags, getArea } from "./utils.js";
+import { world, system, ItemStack, ItemTypes, Player, MinecraftDimensionTypes, ModalFormData } from "@minecraft/server";
+import { getPositionsFromTags, getArea, clearPosTags } from "./utils.js";
+
+const clipboard = new Map(); // プレイヤー別コピー範囲データ
 
 // --- 範囲選択 ---
 world.afterEvents.itemUseOn.subscribe(event => {
@@ -17,68 +19,153 @@ world.afterEvents.itemUseOn.subscribe(event => {
     player.addTag(`pos2:${pos.x},${pos.y},${pos.z}`);
     player.sendMessage(`§a[WorldCreate] 終了点を設定: §r${pos.x}, ${pos.y}, ${pos.z}`);
   } else {
-    player.sendMessage(`§e[WorldCreate] 範囲はすでに設定済みです。" /create reset "でリセットしてください。`);
+    player.sendMessage("§e[WorldCreate] 範囲が設定済みです。/create reset またはメニューからリセットしてください。");
   }
 });
 
-// --- チャット入力監視 ---
-world.beforeEvents.chatSend.subscribe(event => {
-  const player = event.sender;
-  const message = event.message.trim();
-  if (!message.startsWith("/create")) return;
+// --- 本を使ってUIメニューを開く ---
+world.afterEvents.itemUse.subscribe(event => {
+  const player = event.source;
+  const item = event.itemStack;
+  if (!player || !item) return;
+  if (item.typeId === "minecraft:book") {
+    openMenu(player);
+  }
+});
 
-  event.cancel = true; // 通常コマンド送信をキャンセル
-  const args = message.split(" ");
-  const sub = args[1];
+// --- UIメニューを表示する関数 ---
+function openMenu(player) {
+  const form = new ModalFormData()
+    .title("📘 WorldCreate メニュー")
+    .dropdown("操作を選択:", ["fill", "replace", "copy", "paste", "reset"])
+    .textField("ブロックID（fill / replaceで使用）", "minecraft:stone")
+    .textField("置換対象ブロックID（replace時のみ）", "minecraft:dirt");
 
-  // --- /create reset ---
-  if (sub === "reset") {
-    for (const tag of player.getTags()) {
-      if (tag.startsWith("pos1:") || tag.startsWith("pos2:")) player.removeTag(tag);
-    }
-    player.sendMessage("§a[WorldCreate] 範囲をリセットしました。");
+  form.show(player).then(res => {
+    if (res.canceled) return;
+    const [modeIndex, newBlock, oldBlock] = res.formValues;
+    const mode = ["fill", "replace", "copy", "paste", "reset"][modeIndex];
+    handleAction(player, mode, newBlock, oldBlock);
+  });
+}
+
+// --- メニューからの処理実行 ---
+function handleAction(player, mode, newBlock, oldBlock) {
+  const { pos1, pos2 } = getPositionsFromTags(player);
+  const dim = player.dimension;
+
+  if (mode !== "reset" && (!pos1 || !pos2)) {
+    player.sendMessage("§e[WorldCreate] まず棒で範囲を指定してください。");
     return;
   }
 
-  // --- /create fill <block> ---
-  if (sub === "fill") {
-    const blockType = args[2];
-    if (!blockType) {
-      player.sendMessage("§c[WorldCreate] 使用法: /create fill <ブロックID>");
-      return;
-    }
+  switch (mode) {
+    case "fill":
+      fillArea(dim, pos1, pos2, newBlock, player);
+      break;
 
-    const { pos1, pos2 } = getPositionsFromTags(player);
-    if (!pos1 || !pos2) {
-      player.sendMessage("§e[WorldCreate] 2箇所座標を指定してください。");
-      return;
-    }
+    case "replace":
+      replaceArea(dim, pos1, pos2, oldBlock, newBlock, player);
+      break;
 
-    const dim = player.dimension;
-    const area = getArea(pos1, pos2);
+    case "copy":
+      copyArea(dim, pos1, pos2, player);
+      break;
 
-    player.sendMessage(`§b[WorldCreate] 範囲を ${blockType} で埋めています`);
+    case "paste":
+      pasteArea(dim, player);
+      break;
 
-    // ブロックを順に置き換える（大きい範囲ではラグる）
-    system.run(async () => {
-      let count = 0;
-      for (let x = area.minX; x <= area.maxX; x++) {
-        for (let y = area.minY; y <= area.maxY; y++) {
-          for (let z = area.minZ; z <= area.maxZ; z++) {
-            try {
-              const block = dim.getBlock({ x, y, z });
-              block.setType(blockType);
-              count++;
-            } catch (e) {}
-          }
+    case "reset":
+      clearPosTags(player);
+      player.sendMessage("§a[WorldCreate] 範囲をリセットしました。");
+      break;
+  }
+}
+
+// --- Fill処理 ---
+function fillArea(dim, pos1, pos2, blockType, player) {
+  const area = getArea(pos1, pos2);
+  player.sendMessage(`§b[WorldCreate] 範囲を ${blockType} で埋めています...`);
+  system.run(() => {
+    let count = 0;
+    for (let x = area.minX; x <= area.maxX; x++) {
+      for (let y = area.minY; y <= area.maxY; y++) {
+        for (let z = area.minZ; z <= area.maxZ; z++) {
+          try {
+            dim.getBlock({ x, y, z }).setType(blockType);
+            count++;
+          } catch (e) {}
         }
       }
-      player.sendMessage(`§a[WorldCreate] 埋め立て完了 (${count} ブロック)。`);
-    });
-  }
+    }
+    player.sendMessage(`§a[WorldCreate] fill 完了 (${count} ブロック)。`);
+  });
+}
 
-  // --- 不明なサブコマンド ---
-  else {
-    player.sendMessage("§7[WorldCreate] コマンド一覧: fill / reset");
+// --- Replace処理 ---
+function replaceArea(dim, pos1, pos2, oldBlock, newBlock, player) {
+  const area = getArea(pos1, pos2);
+  player.sendMessage(`§b[WorldCreate] ${oldBlock} → ${newBlock} に置換中...`);
+  system.run(() => {
+    let count = 0;
+    for (let x = area.minX; x <= area.maxX; x++) {
+      for (let y = area.minY; y <= area.maxY; y++) {
+        for (let z = area.minZ; z <= area.maxZ; z++) {
+          try {
+            const b = dim.getBlock({ x, y, z });
+            if (b.typeId === oldBlock) {
+              b.setType(newBlock);
+              count++;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+    player.sendMessage(`§a[WorldCreate] 置換完了 (${count} ブロック)。`);
+  });
+}
+
+// --- Copy処理 ---
+function copyArea(dim, pos1, pos2, player) {
+  const area = getArea(pos1, pos2);
+  const blocks = [];
+  for (let x = area.minX; x <= area.maxX; x++) {
+    for (let y = area.minY; y <= area.maxY; y++) {
+      for (let z = area.minZ; z <= area.maxZ; z++) {
+        try {
+          const block = dim.getBlock({ x, y, z });
+          blocks.push({ rel: { x: x - area.minX, y: y - area.minY, z: z - area.minZ }, type: block.typeId });
+        } catch (e) {}
+      }
+    }
   }
-});
+  clipboard.set(player.name, blocks);
+  player.sendMessage(`§a[WorldCreate] ${blocks.length} ブロックをコピーしました。`);
+}
+
+// --- Paste処理 ---
+function pasteArea(dim, player) {
+  const blocks = clipboard.get(player.name);
+  if (!blocks) {
+    player.sendMessage("§e[WorldCreate] コピーされたデータがありません。");
+    return;
+  }
+  const pos = player.location;
+  player.sendMessage("§b[WorldCreate] 貼り付け中...");
+  system.run(() => {
+    let count = 0;
+    for (const b of blocks) {
+      try {
+        const loc = {
+          x: Math.floor(pos.x + b.rel.x),
+          y: Math.floor(pos.y + b.rel.y),
+          z: Math.floor(pos.z + b.rel.z)
+        };
+        dim.getBlock(loc).setType(b.type);
+        count++;
+      } catch (e) {}
+    }
+    player.sendMessage(`§a[WorldCreate] 貼り付け完了 (${count} ブロック)。`);
+  });
+}
