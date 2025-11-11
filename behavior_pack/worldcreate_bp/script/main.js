@@ -36,7 +36,7 @@ world.afterEvents.itemUse.subscribe(event => {
 // --- UIメニューを表示する関数 ---
 function openMenu(player) {
   const form = new ModalFormData()
-    .title("📘 WorldCreate メニュー")
+    .title("WorldCreate メニュー")
     .dropdown("操作を選択:", ["fill", "replace", "copy", "paste", "reset"])
     .textField("ブロックID（fill / replaceで使用）", "minecraft:stone")
     .textField("置換対象ブロックID（replace時のみ）", "minecraft:dirt");
